@@ -1,9 +1,12 @@
 import base64
+import hashlib
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pymupdf as fitz
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from telegram import Update
@@ -284,6 +287,61 @@ async def mensaje_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _log_mensaje(update, "imagen", inicio)
 
 
+MAX_PDF_BYTES = 20 * 1024 * 1024
+MIN_CHARS_PDF = 30
+
+
+def _guardar_archivo_examen(user_id: int, contenido: bytes, extension: str) -> str:
+    """Guarda el archivo con nombre hasheado en data/examenes/{user_id}/."""
+    carpeta = Path("data/examenes") / str(user_id)
+    carpeta.mkdir(parents=True, exist_ok=True)
+    nombre = hashlib.sha256(contenido).hexdigest()[:16] + extension
+    ruta = carpeta / nombre
+    ruta.write_bytes(contenido)
+    return str(ruta)
+
+
+def extraer_pdf(pdf_bytes: bytes) -> tuple[str | None, str | None]:
+    """Devuelve (pdf_text, image_b64): texto si el PDF lo tiene, si no pág 1 rasterizada."""
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        texto = "\n".join(pagina.get_text() for pagina in doc)
+        if len(texto.strip()) >= MIN_CHARS_PDF:
+            return texto, None
+        pixmap = doc[0].get_pixmap(dpi=200)
+        return None, base64.b64encode(pixmap.tobytes("png")).decode()
+
+
+async def mensaje_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "pdf")
+    if usuario is None:
+        return
+    documento = update.message.document
+    if documento.file_size and documento.file_size > MAX_PDF_BYTES:
+        await update.message.reply_text("El PDF es muy pesado (máx 20MB).")
+        return
+    archivo = await documento.get_file()
+    pdf_bytes = bytes(await archivo.download_as_bytearray())
+    ruta = _guardar_archivo_examen(usuario["user_id"], pdf_bytes, ".pdf")
+    pdf_text, imagen_b64 = extraer_pdf(pdf_bytes)
+    respuesta = await procesar_mensaje(
+        {
+            "telegram_id": update.effective_user.id,
+            "user_id": usuario["user_id"],
+            "nombre": usuario["nombre"],
+            "tz": usuario["tz"],
+            "input_text": update.message.caption,
+            "pdf_text": pdf_text,
+            "image_b64": imagen_b64,
+            "es_estudio": imagen_b64 is not None,
+            "archivo_path": ruta,
+            "origen": "imagen",
+        }
+    )
+    await update.message.reply_text(respuesta)
+    _log_mensaje(update, "pdf", inicio)
+
+
 async def mensaje_no_soportado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     usuario = await _autorizar(update, "no_soportado")
     if usuario is None:
@@ -303,9 +361,15 @@ def build_application() -> Application:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, mensaje_texto))
     application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, mensaje_audio))
     application.add_handler(MessageHandler(filters.PHOTO, mensaje_foto))
+    application.add_handler(MessageHandler(filters.Document.PDF, mensaje_pdf))
     application.add_handler(
         MessageHandler(
-            ~filters.TEXT & ~filters.VOICE & ~filters.AUDIO & ~filters.PHOTO & ~filters.COMMAND,
+            ~filters.TEXT
+            & ~filters.VOICE
+            & ~filters.AUDIO
+            & ~filters.PHOTO
+            & ~filters.Document.PDF
+            & ~filters.COMMAND,
             mensaje_no_soportado,
         )
     )

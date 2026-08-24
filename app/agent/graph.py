@@ -25,6 +25,8 @@ class AgentState(TypedDict, total=False):
     pendiente: dict | None
     clasificacion_imagen: str | None
     fecha_asumida: bool | None
+    es_estudio: bool | None
+    archivo_path: str | None
     respuesta: str | None
 
 
@@ -33,6 +35,8 @@ def _despues_de_entrada(state: AgentState) -> str:
         return "fin"
     if state.get("pendiente"):
         return "completar"
+    if state.get("pdf_text") or state.get("es_estudio"):
+        return "examen"
     if state.get("image_b64"):
         return "vision"
     return "clasificar"
@@ -45,6 +49,8 @@ def _despues_de_vision(state: AgentState) -> str:
         return "vision_plato"
     if state.get("clasificacion_imagen") == "captura_app":
         return "vision_captura"
+    if state.get("clasificacion_imagen") == "estudio":
+        return "examen"
     return "responder"
 
 
@@ -76,6 +82,7 @@ def build_graph():
     g.add_node("vision", nodes.vision_clasificar)
     g.add_node("vision_plato", nodes.vision_plato)
     g.add_node("vision_captura", nodes.vision_captura)
+    g.add_node("examen", nodes.examen_extraer)
     g.add_node("clasificar", nodes.clasificar)
     g.add_node("consultar", nodes.consultar)
     g.add_node("extraer", nodes.extraer)
@@ -88,14 +95,22 @@ def build_graph():
     g.add_conditional_edges(
         "entrada",
         _despues_de_entrada,
-        {"completar": "completar", "clasificar": "clasificar", "vision": "vision", "fin": END},
+        {
+            "completar": "completar",
+            "clasificar": "clasificar",
+            "vision": "vision",
+            "examen": "examen",
+            "fin": END,
+        },
     )
+    g.add_edge("examen", "responder")
     g.add_conditional_edges(
         "vision",
         _despues_de_vision,
         {
             "vision_plato": "vision_plato",
             "vision_captura": "vision_captura",
+            "examen": "examen",
             "responder": "responder",
         },
     )

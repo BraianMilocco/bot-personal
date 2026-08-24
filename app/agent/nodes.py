@@ -152,13 +152,18 @@ async def vision_clasificar(state):
             "Vi la imagen pero no parece un plato, un estudio médico ni una captura de "
             "actividad. Mandame alguna de esas y la registro."
         )
-    elif clasificacion.categoria == "estudio":
-        # ponytail: placeholder hasta 6.x
-        update["respuesta"] = (
-            "Detecté un estudio médico, todavía estoy aprendiendo a procesarlos. "
-            "Pronto va a estar disponible."
-        )
     return update
+
+
+@_con_manejo
+async def examen_extraer(state):
+    """Nodo de extracción de exámenes (PDF texto, PDF escaneado o foto)."""
+    # ponytail: placeholder hasta 6.2 — acá llega el estudio por las 3 vías
+    return {
+        "respuesta": (
+            "Recibí tu estudio. Todavía estoy aprendiendo a leerlos, pronto va a estar disponible."
+        )
+    }
 
 
 @_con_manejo
