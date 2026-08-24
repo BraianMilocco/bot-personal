@@ -17,3 +17,4 @@
 | 3 | 3.1 | done | step 3.1: grafo mínimo registrar | 2026-08-24 |
 | 3 | 3.2 | done | step 3.2: diferido + aclaración | 2026-08-24 |
 | 3 | 3.3 | done | step 3.3: registro por texto completo | 2026-08-24 |
+| 3 | 3.4 | done | step 3.4: registro por audio | 2026-08-24 |

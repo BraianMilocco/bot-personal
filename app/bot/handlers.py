@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
+from app.agent import llm
 from app.agent.graph import procesar_mensaje
 from app.config import settings
 from app.db import repository as repo
@@ -110,23 +111,59 @@ async def cmd_deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _log_mensaje(update, "comando", inicio)
 
 
-async def mensaje_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    inicio = time.monotonic()
-    usuario = await _autorizar(update, "texto")
-    if usuario is None:
-        return
+async def _procesar_texto(update: Update, usuario: dict, texto: str, origen: str) -> None:
     respuesta = await procesar_mensaje(
         {
             "telegram_id": update.effective_user.id,
             "user_id": usuario["user_id"],
             "nombre": usuario["nombre"],
             "tz": usuario["tz"],
-            "input_text": update.message.text,
-            "origen": "texto",
+            "input_text": texto,
+            "origen": origen,
         }
     )
     await update.message.reply_text(respuesta)
+
+
+async def mensaje_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "texto")
+    if usuario is None:
+        return
+    await _procesar_texto(update, usuario, update.message.text, "texto")
     _log_mensaje(update, "texto", inicio)
+
+
+MAX_AUDIO_SEGUNDOS = 120
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
+
+
+async def mensaje_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "audio")
+    if usuario is None:
+        return
+    audio = update.message.voice or update.message.audio
+    if audio.duration and audio.duration > MAX_AUDIO_SEGUNDOS:
+        await update.message.reply_text("El audio es muy largo: mandame notas de hasta 2 minutos.")
+        return
+    if audio.file_size and audio.file_size > MAX_AUDIO_BYTES:
+        await update.message.reply_text("El audio es muy pesado, probá con uno más corto.")
+        return
+    archivo = await audio.get_file()
+    audio_bytes = bytes(await archivo.download_as_bytearray())
+    texto = await llm.transcribir(audio_bytes)
+    await _procesar_texto(update, usuario, texto, "audio")
+    _log_mensaje(update, "audio", inicio)
+
+
+async def mensaje_no_soportado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    usuario = await _autorizar(update, "no_soportado")
+    if usuario is None:
+        return
+    await update.message.reply_text(
+        "Ese formato no lo manejo. Acepto: texto, notas de voz/audio, fotos y PDFs."
+    )
 
 
 def build_application() -> Application:
@@ -134,4 +171,11 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("deshacer", cmd_deshacer))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, mensaje_texto))
+    application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, mensaje_audio))
+    application.add_handler(
+        MessageHandler(
+            ~filters.TEXT & ~filters.VOICE & ~filters.AUDIO & ~filters.COMMAND,
+            mensaje_no_soportado,
+        )
+    )
     return application
