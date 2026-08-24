@@ -31,6 +31,11 @@
   seedeada (`SELECT` muestra 111111111|Braian|t); bot loguea error claro con token dummy.
 - ruff check + format limpios.
 
+## Correcciones posteriores
+- fix(0.4): el test de whitelist dependía del ALLOWED_USERS del .env local; cuando el
+  usuario puso su telegram_id real, el test rompió. Ahora monkeypatchea
+  `settings.allowed_users` con un valor fijo y limpia el cache antes/después.
+
 ## Pendientes/notas para el siguiente substep
 - 1.1 ya casi completo; en 1.1 solo verificar DoD formal (`alembic upgrade head` de cero
   en contenedor) y documentar.
