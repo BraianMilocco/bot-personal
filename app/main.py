@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.bot.handlers import build_application, seed_users
+from app.bot.proactivo import crear_scheduler
 from app.config import settings
 from app.db.session import engine
 
@@ -21,10 +22,15 @@ async def _arrancar_bot(app: FastAPI) -> None:
     await application.start()
     await application.updater.start_polling()
     app.state.bot = application
-    logger.info("bot: polling iniciado")
+    app.state.scheduler = crear_scheduler(application.bot, settings.tz)
+    app.state.scheduler.start()
+    logger.info("bot: polling iniciado y resumen semanal programado")
 
 
 async def _frenar_bot(app: FastAPI) -> None:
+    scheduler = getattr(app.state, "scheduler", None)
+    if scheduler is not None:
+        scheduler.shutdown(wait=False)
     application = getattr(app.state, "bot", None)
     if application is None:
         return
