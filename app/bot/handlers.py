@@ -1,6 +1,7 @@
 import base64
 import logging
 import time
+from collections import defaultdict, deque
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -73,13 +74,37 @@ async def seed_users() -> None:
     logger.info("seed_users: %d usuarios upserteados", len(usuarios))
 
 
+RATE_LIMIT_MSGS = 15
+RATE_LIMIT_VENTANA = 60.0
+_rate_ventanas: dict[int, deque] = defaultdict(deque)
+
+
+def _dentro_del_limite(telegram_id: int) -> bool:
+    """Ventana deslizante en memoria: máx RATE_LIMIT_MSGS por minuto por usuario."""
+    ahora = time.monotonic()
+    ventana = _rate_ventanas[telegram_id]
+    while ventana and ahora - ventana[0] > RATE_LIMIT_VENTANA:
+        ventana.popleft()
+    if len(ventana) >= RATE_LIMIT_MSGS:
+        return False
+    ventana.append(ahora)
+    return True
+
+
 async def _autorizar(update: Update, tipo: str) -> dict | None:
-    """Whitelist + log de rechazo. Devuelve el usuario o None (ya respondido)."""
+    """Whitelist + rate limit + log de rechazo. Devuelve el usuario o None (ya respondido)."""
     telegram_id = update.effective_user.id
     usuario = await usuario_autorizado(telegram_id)
     if usuario is None:
         await update.message.reply_text("No autorizado.")
         logger.warning("mensaje rechazado telegram_id=%s tipo=%s", telegram_id, tipo)
+        return None
+    if not _dentro_del_limite(telegram_id):
+        await update.message.reply_text(
+            "Pará un toque 😅 estás mandando muchos mensajes seguidos. Esperá un minuto y seguimos."
+        )
+        logger.warning("rate limit telegram_id=%s tipo=%s", telegram_id, tipo)
+        return None
     return usuario
 
 

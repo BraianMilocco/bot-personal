@@ -35,6 +35,16 @@ def respuesta_tool_call(nombre: str, argumentos: str = "{}", call_id: str = "cal
     return r
 
 
+@pytest.fixture(autouse=True)
+def _rate_limit_limpio():
+    """Cada test arranca con la ventana de rate limit vacía."""
+    from app.bot import handlers
+
+    handlers._rate_ventanas.clear()
+    yield
+    handlers._rate_ventanas.clear()
+
+
 @pytest.fixture
 def cliente_mock(monkeypatch):
     cliente = MagicMock()

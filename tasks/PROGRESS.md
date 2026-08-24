@@ -30,3 +30,4 @@
 | 7 | 7.1 | done | step 7.1: sugerencias cruzadas | 2026-08-24 |
 | 7 | 7.2 | done | step 7.2: informe consulta | 2026-08-24 |
 | 7 | 7.3 | done | step 7.3: resumen semanal | 2026-08-24 |
+| 8 | 8.1 | done | step 8.1: rate limit y costos | 2026-08-24 |

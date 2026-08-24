@@ -27,14 +27,29 @@ async def transcribir(audio_bytes: bytes, filename: str = "audio.ogg") -> str:
     return respuesta.text
 
 
+def _log_tokens(respuesta, modelo: str) -> None:
+    uso = getattr(respuesta, "usage", None)
+    if uso is not None:
+        logger.info(
+            "llm_tokens modelo=%s prompt=%s completion=%s total=%s",
+            modelo,
+            getattr(uso, "prompt_tokens", "?"),
+            getattr(uso, "completion_tokens", "?"),
+            getattr(uso, "total_tokens", "?"),
+        )
+
+
 async def conversar(
     messages: list[dict], *, tools: list[dict] | None = None, model: str | None = None
 ):
     """Call de chat libre (con tool-calling opcional). Devuelve la respuesta cruda."""
     kwargs = {"tools": tools} if tools else {}
-    return await get_client().chat.completions.create(
-        model=model or settings.llm_model, messages=messages, **kwargs
+    modelo = model or settings.llm_model
+    respuesta = await get_client().chat.completions.create(
+        model=modelo, messages=messages, **kwargs
     )
+    _log_tokens(respuesta, modelo)
+    return respuesta
 
 
 async def extraer[T: BaseModel](
@@ -51,6 +66,7 @@ async def extraer[T: BaseModel](
                 "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()},
             },
         )
+        _log_tokens(respuesta, model or settings.llm_model)
         contenido = respuesta.choices[0].message.content
         try:
             return schema.model_validate_json(contenido)
