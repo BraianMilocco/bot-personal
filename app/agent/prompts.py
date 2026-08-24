@@ -94,10 +94,18 @@ peso_actual_kg, objetivo, restricciones, notas). Los que no menciona quedan en n
 Respondé SOLO el JSON del schema."""
 
 
+SYSTEM_VISION_CLASIFICAR = """\
+Mirá la imagen y clasificala en UNA categoría:
+- "plato": comida o bebida (plato servido, vianda, sandwich, postre, mate con facturas...)
+- "estudio": estudio/examen médico (análisis de sangre/orina, informe de laboratorio, \
+resultados con valores y rangos)
+- "captura_app": captura de pantalla de una app de actividad (Google Fit, smartwatch, \
+podómetro: pasos, distancia, calorías, anillos de actividad)
+- "otro": cualquier otra cosa
+
+Respondé SOLO el JSON del schema."""
+
 # Placeholders: se completan en sus steps.
-SYSTEM_VISION_CLASIFICAR = (
-    "PLACEHOLDER step 4.1: clasificar imagen (plato/estudio/captura_app/otro)"
-)
 SYSTEM_VISION_PLATO = "PLACEHOLDER step 4.2: extraer comida de foto de plato"
 SYSTEM_VISION_CAPTURA = "PLACEHOLDER step 4.3: extraer pasos/distancia de captura de app"
 SYSTEM_EXAMEN = "PLACEHOLDER step 6.2: extraer valores y rangos de examen"

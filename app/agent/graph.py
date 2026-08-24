@@ -23,13 +23,18 @@ class AgentState(TypedDict, total=False):
     extraccion: object | None
     pendiente_aclaracion: str | None
     pendiente: dict | None
+    clasificacion_imagen: str | None
     respuesta: str | None
 
 
 def _despues_de_entrada(state: AgentState) -> str:
     if state.get("respuesta"):
         return "fin"
-    return "completar" if state.get("pendiente") else "clasificar"
+    if state.get("pendiente"):
+        return "completar"
+    if state.get("image_b64"):
+        return "vision"
+    return "clasificar"
 
 
 def _despues_de_clasificar(state: AgentState) -> str:
@@ -55,6 +60,7 @@ def _despues_de_completar(state: AgentState) -> str:
 def build_graph():
     g = StateGraph(AgentState)
     g.add_node("entrada", nodes.entrada)
+    g.add_node("vision", nodes.vision_clasificar)
     g.add_node("clasificar", nodes.clasificar)
     g.add_node("extraer", nodes.extraer)
     g.add_node("aclarar", nodes.aclarar)
@@ -66,8 +72,9 @@ def build_graph():
     g.add_conditional_edges(
         "entrada",
         _despues_de_entrada,
-        {"completar": "completar", "clasificar": "clasificar", "fin": END},
+        {"completar": "completar", "clasificar": "clasificar", "vision": "vision", "fin": END},
     )
+    g.add_edge("vision", "responder")
     g.add_conditional_edges(
         "clasificar", _despues_de_clasificar, {"extraer": "extraer", "fin": END}
     )

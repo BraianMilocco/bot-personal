@@ -6,10 +6,12 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from app.agent import llm, prompts
+from app.config import settings
 from app.db import repository as repo
 from app.db.session import get_session
 from app.schemas import (
     ActividadExtraida,
+    ClasificacionImagen,
     ComidaExtraida,
     IntentResult,
     PerfilUpdate,
@@ -119,6 +121,40 @@ async def completar(state):
     async with get_session() as session:
         await repo.borrar_pendiente(session, state["user_id"])
     return {"extraccion": comida, "intent": "registrar_comida", "pendiente": None}
+
+
+def _mensaje_con_imagen(system: str, state) -> list[dict]:
+    contenido = [
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{state['image_b64']}"},
+        }
+    ]
+    if state.get("input_text"):
+        contenido.append({"type": "text", "text": state["input_text"]})
+    return [{"role": "system", "content": system}, {"role": "user", "content": contenido}]
+
+
+@_con_manejo
+async def vision_clasificar(state):
+    clasificacion = await llm.extraer(
+        ClasificacionImagen,
+        _mensaje_con_imagen(prompts.SYSTEM_VISION_CLASIFICAR, state),
+        model=settings.vision_model,
+    )
+    update = {"clasificacion_imagen": clasificacion.categoria}
+    if clasificacion.categoria == "otro":
+        update["respuesta"] = (
+            "Vi la imagen pero no parece un plato, un estudio médico ni una captura de "
+            "actividad. Mandame alguna de esas y la registro."
+        )
+    elif clasificacion.categoria in ("plato", "estudio", "captura_app"):
+        # ponytail: placeholder hasta 4.2 (plato), 4.3 (captura) y 6.x (estudio)
+        update["respuesta"] = (
+            f"Detecté una imagen de tipo {clasificacion.categoria}, todavía estoy "
+            "aprendiendo a procesarla. Pronto va a estar disponible."
+        )
+    return update
 
 
 @_con_manejo

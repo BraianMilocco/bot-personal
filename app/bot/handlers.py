@@ -1,3 +1,4 @@
+import base64
 import logging
 import time
 
@@ -157,6 +158,35 @@ async def mensaje_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     _log_mensaje(update, "audio", inicio)
 
 
+MAX_FOTO_BYTES = 10 * 1024 * 1024
+
+
+async def mensaje_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "imagen")
+    if usuario is None:
+        return
+    foto = update.message.photo[-1]  # mejor resolución
+    if foto.file_size and foto.file_size > MAX_FOTO_BYTES:
+        await update.message.reply_text("La foto es muy pesada (máx 10MB).")
+        return
+    archivo = await foto.get_file()
+    imagen_bytes = bytes(await archivo.download_as_bytearray())
+    respuesta = await procesar_mensaje(
+        {
+            "telegram_id": update.effective_user.id,
+            "user_id": usuario["user_id"],
+            "nombre": usuario["nombre"],
+            "tz": usuario["tz"],
+            "input_text": update.message.caption,
+            "image_b64": base64.b64encode(imagen_bytes).decode(),
+            "origen": "imagen",
+        }
+    )
+    await update.message.reply_text(respuesta)
+    _log_mensaje(update, "imagen", inicio)
+
+
 async def mensaje_no_soportado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     usuario = await _autorizar(update, "no_soportado")
     if usuario is None:
@@ -172,9 +202,10 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("deshacer", cmd_deshacer))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, mensaje_texto))
     application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, mensaje_audio))
+    application.add_handler(MessageHandler(filters.PHOTO, mensaje_foto))
     application.add_handler(
         MessageHandler(
-            ~filters.TEXT & ~filters.VOICE & ~filters.AUDIO & ~filters.COMMAND,
+            ~filters.TEXT & ~filters.VOICE & ~filters.AUDIO & ~filters.PHOTO & ~filters.COMMAND,
             mensaje_no_soportado,
         )
     )
