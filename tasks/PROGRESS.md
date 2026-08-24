@@ -13,3 +13,4 @@
 | 1 | 1.5 | done | step 1.5: repository consulta + tests | 2026-08-24 |
 | 2 | 2.1 | done | step 2.1: cliente llm + transcripción | 2026-08-24 |
 | 2 | 2.2 | done | step 2.2: schemas de extracción | 2026-08-24 |
+| 2 | 2.3 | done | step 2.3: prompts base + tests | 2026-08-24 |

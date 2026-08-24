@@ -1,8 +1,29 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from sqlalchemy import text
 
+from app.agent import llm
 from app.db.models import User
 from app.db.session import SessionFactory
+
+
+def respuesta_llm(contenido: str) -> MagicMock:
+    """Arma una respuesta de chat.completions con el contenido dado."""
+    r = MagicMock()
+    r.choices = [MagicMock()]
+    r.choices[0].message.content = contenido
+    return r
+
+
+@pytest.fixture
+def cliente_mock(monkeypatch):
+    cliente = MagicMock()
+    cliente.chat.completions.create = AsyncMock()
+    cliente.audio.transcriptions.create = AsyncMock()
+    monkeypatch.setattr(llm, "_client", cliente)
+    return cliente
+
 
 TABLAS = (
     "conversacion_mensajes, examen_valores, examenes, metricas_dia, "

@@ -1,30 +1,15 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel, ValidationError
 
 from app.agent import llm
+from tests.conftest import respuesta_llm as _respuesta
 
 
 class Cosa(BaseModel):
     nombre: str
     cantidad: int
-
-
-def _respuesta(contenido: str) -> MagicMock:
-    r = MagicMock()
-    r.choices = [MagicMock()]
-    r.choices[0].message.content = contenido
-    return r
-
-
-@pytest.fixture
-def cliente_mock(monkeypatch):
-    cliente = MagicMock()
-    cliente.chat.completions.create = AsyncMock()
-    cliente.audio.transcriptions.create = AsyncMock()
-    monkeypatch.setattr(llm, "_client", cliente)
-    return cliente
 
 
 async def test_extraer_valido(cliente_mock):
