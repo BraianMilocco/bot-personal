@@ -51,6 +51,8 @@ def _despues_de_vision(state: AgentState) -> str:
 def _despues_de_clasificar(state: AgentState) -> str:
     if state.get("respuesta"):
         return "fin"
+    if state.get("intent") == "consultar":
+        return "consultar"
     return "extraer"
 
 
@@ -75,6 +77,7 @@ def build_graph():
     g.add_node("vision_plato", nodes.vision_plato)
     g.add_node("vision_captura", nodes.vision_captura)
     g.add_node("clasificar", nodes.clasificar)
+    g.add_node("consultar", nodes.consultar)
     g.add_node("extraer", nodes.extraer)
     g.add_node("aclarar", nodes.aclarar)
     g.add_node("completar", nodes.completar)
@@ -103,8 +106,11 @@ def build_graph():
             {"guardar": "guardar", "aclarar": "aclarar", "responder": "responder"},
         )
     g.add_conditional_edges(
-        "clasificar", _despues_de_clasificar, {"extraer": "extraer", "fin": END}
+        "clasificar",
+        _despues_de_clasificar,
+        {"extraer": "extraer", "consultar": "consultar", "fin": END},
     )
+    g.add_edge("consultar", END)
     g.add_conditional_edges(
         "extraer",
         _despues_de_extraer,

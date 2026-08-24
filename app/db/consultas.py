@@ -157,14 +157,16 @@ async def valores_examen(session: AsyncSession, examen_id: int) -> list[ExamenVa
 
 
 async def ultimos_mensajes(
-    session: AsyncSession, user_id: int, n: int = 10
+    session: AsyncSession, user_id: int, n: int = 10, horas: int | None = None
 ) -> list[ConversacionMensaje]:
+    stmt = select(ConversacionMensaje).where(ConversacionMensaje.user_id == user_id)
+    if horas is not None:
+        stmt = stmt.where(ConversacionMensaje.creado_en >= func.now() - timedelta(hours=horas))
     filas = (
         await session.scalars(
-            select(ConversacionMensaje)
-            .where(ConversacionMensaje.user_id == user_id)
-            .order_by(ConversacionMensaje.creado_en.desc(), ConversacionMensaje.id.desc())
-            .limit(n)
+            stmt.order_by(
+                ConversacionMensaje.creado_en.desc(), ConversacionMensaje.id.desc()
+            ).limit(n)
         )
     ).all()
     return list(reversed(filas))

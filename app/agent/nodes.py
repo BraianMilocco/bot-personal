@@ -1,13 +1,17 @@
 """Nodos del grafo. Cada nodo captura sus errores: el grafo nunca explota al handler."""
 
 import functools
+import json
 import logging
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from app.agent import llm, prompts
+from app.agent import tools as tools_mod
 from app.config import settings
+from app.db import consultas
 from app.db import repository as repo
+from app.db.models import Perfil
 from app.db.session import get_session
 from app.schemas import (
     ActividadExtraida,
@@ -228,6 +232,89 @@ async def extraer(state):
     if getattr(extraccion, "necesita_aclaracion", None):
         update["pendiente_aclaracion"] = extraccion.necesita_aclaracion
     return update
+
+
+async def bloque_contexto(session, user_id: int, hoy) -> str:
+    """Bloque compacto: perfil + tendencia de peso 30d + esta semana vs anterior."""
+    perfil = await session.get(Perfil, user_id)
+    tendencia = await consultas.tendencia_peso(session, user_id, 30)
+    comparacion = await consultas.comparar_semanas(session, user_id, hoy)
+    lineas = []
+    if perfil:
+        lineas.append(
+            f"Perfil: objetivo={perfil.objetivo or '-'}, "
+            f"restricciones={perfil.restricciones or '-'}, "
+            f"peso_actual={perfil.peso_actual_kg or '-'}kg"
+        )
+    if tendencia["puntos"]:
+        lineas.append(
+            f"Peso 30 días: {tendencia['puntos'][0][1]}kg → {tendencia['puntos'][-1][1]}kg "
+            f"(delta {tendencia['delta_kg']}kg)"
+        )
+    actual, anterior = comparacion["actual"], comparacion["anterior"]
+    lineas.append(
+        f"Esta semana: ~{actual['kcal_dia'] or '-'} kcal/día, "
+        f"~{actual['proteinas_dia'] or '-'}g prot/día, {actual['sesiones']} sesiones, "
+        f"{actual['pasos_dia'] or '-'} pasos/día. "
+        f"Semana anterior: ~{anterior['kcal_dia'] or '-'} kcal/día, "
+        f"{anterior['sesiones']} sesiones, {anterior['pasos_dia'] or '-'} pasos/día."
+    )
+    return "\n".join(lineas) or "Sin datos todavía."
+
+
+MAX_ITERACIONES_TOOLS = 3
+
+
+@_con_manejo
+async def consultar(state):
+    """Charla multi-turno con tool-calling sobre los datos del usuario."""
+    ahora = ahora_usuario(state)
+    user_id = state["user_id"]
+    async with get_session() as session:
+        historial = await consultas.ultimos_mensajes(session, user_id, 10, horas=24)
+        contexto = await bloque_contexto(session, user_id, ahora.date())
+
+    messages = [
+        {
+            "role": "system",
+            "content": prompts.system_consultar(ahora, state.get("nombre", ""), contexto),
+        },
+        *[{"role": m.rol, "content": m.contenido} for m in historial],
+        {"role": "user", "content": state["input_text"]},
+    ]
+
+    respuesta_final = None
+    for _ in range(MAX_ITERACIONES_TOOLS):
+        r = await llm.conversar(messages, tools=tools_mod.DEFINICIONES)
+        mensaje = r.choices[0].message
+        if not mensaje.tool_calls:
+            respuesta_final = mensaje.content
+            break
+        messages.append(
+            {
+                "role": "assistant",
+                "content": mensaje.content,
+                "tool_calls": [tc.model_dump() for tc in mensaje.tool_calls],
+            }
+        )
+        for tc in mensaje.tool_calls:
+            resultado = await tools_mod.ejecutar_tool(
+                tc.function.name, json.loads(tc.function.arguments or "{}"), user_id
+            )
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": resultado})
+    if respuesta_final is None:
+        # se agotaron las iteraciones con tools: pedir cierre sin tools
+        r = await llm.conversar(messages)
+        respuesta_final = r.choices[0].message.content
+
+    async with get_session() as session:
+        await repo.guardar_mensaje_conversacion(
+            session, user_id, rol="user", contenido=state["input_text"]
+        )
+        await repo.guardar_mensaje_conversacion(
+            session, user_id, rol="assistant", contenido=respuesta_final
+        )
+    return {"respuesta": respuesta_final}
 
 
 @_con_manejo

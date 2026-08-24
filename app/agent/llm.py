@@ -27,6 +27,16 @@ async def transcribir(audio_bytes: bytes, filename: str = "audio.ogg") -> str:
     return respuesta.text
 
 
+async def conversar(
+    messages: list[dict], *, tools: list[dict] | None = None, model: str | None = None
+):
+    """Call de chat libre (con tool-calling opcional). Devuelve la respuesta cruda."""
+    kwargs = {"tools": tools} if tools else {}
+    return await get_client().chat.completions.create(
+        model=model or settings.llm_model, messages=messages, **kwargs
+    )
+
+
 async def extraer[T: BaseModel](
     schema: type[T], messages: list[dict], *, model: str | None = None
 ) -> T:

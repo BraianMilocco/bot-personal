@@ -9,10 +9,29 @@ from app.db.session import SessionFactory
 
 
 def respuesta_llm(contenido: str) -> MagicMock:
-    """Arma una respuesta de chat.completions con el contenido dado."""
+    """Arma una respuesta de chat.completions con el contenido dado (sin tool calls)."""
     r = MagicMock()
     r.choices = [MagicMock()]
     r.choices[0].message.content = contenido
+    r.choices[0].message.tool_calls = None
+    return r
+
+
+def respuesta_tool_call(nombre: str, argumentos: str = "{}", call_id: str = "call_1") -> MagicMock:
+    """Arma una respuesta de chat.completions que pide ejecutar una tool."""
+    r = MagicMock()
+    r.choices = [MagicMock()]
+    r.choices[0].message.content = None
+    tc = MagicMock()
+    tc.id = call_id
+    tc.function.name = nombre
+    tc.function.arguments = argumentos
+    tc.model_dump.return_value = {
+        "id": call_id,
+        "type": "function",
+        "function": {"name": nombre, "arguments": argumentos},
+    }
+    r.choices[0].message.tool_calls = [tc]
     return r
 
 
