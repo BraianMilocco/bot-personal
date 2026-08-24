@@ -42,6 +42,36 @@ async def test_imagen_otro_responde_amable(cliente_mock, user_id):
     assert "plato" in respuesta
 
 
+async def test_foto_de_plato_registra_comida(cliente_mock, user_id, session):
+    """DoD 4.2: foto de plato → comida con macros y momento por hora local."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import select
+
+    from app.agent.nodes import momento_por_hora
+    from app.db.models import Comida
+
+    cliente_mock.chat.completions.create.side_effect = [
+        respuesta_llm('{"categoria": "plato"}'),
+        respuesta_llm(
+            '{"descripcion_normalizada": "milanesa con ensalada", "kcal_est": 600,'
+            ' "proteinas_g": 38, "carbs_g": 40, "grasas_g": 28, "confianza": "media"}'
+        ),
+    ]
+    respuesta = await procesar_mensaje(_estado(user_id))
+    assert "🍽 Anotado" in respuesta
+    assert "600" in respuesta
+
+    fila = await session.scalar(select(Comida).where(Comida.user_id == user_id))
+    assert fila.descripcion == "milanesa con ensalada"
+    assert fila.kcal_est == 600
+    assert fila.origen == "imagen"
+    # sin momento en la extracción → momento por hora local
+    hora_local = datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).time()
+    assert fila.momento == momento_por_hora(hora_local)
+
+
 async def test_caption_viaja_junto_a_la_imagen(cliente_mock, user_id):
     cliente_mock.chat.completions.create.return_value = respuesta_llm('{"categoria": "otro"}')
     await nodes.vision_clasificar(_estado(user_id, caption="es mi almuerzo"))

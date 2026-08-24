@@ -37,6 +37,14 @@ def _despues_de_entrada(state: AgentState) -> str:
     return "clasificar"
 
 
+def _despues_de_vision(state: AgentState) -> str:
+    if state.get("respuesta"):
+        return "responder"
+    if state.get("clasificacion_imagen") == "plato":
+        return "vision_plato"
+    return "responder"
+
+
 def _despues_de_clasificar(state: AgentState) -> str:
     if state.get("respuesta"):
         return "fin"
@@ -61,6 +69,7 @@ def build_graph():
     g = StateGraph(AgentState)
     g.add_node("entrada", nodes.entrada)
     g.add_node("vision", nodes.vision_clasificar)
+    g.add_node("vision_plato", nodes.vision_plato)
     g.add_node("clasificar", nodes.clasificar)
     g.add_node("extraer", nodes.extraer)
     g.add_node("aclarar", nodes.aclarar)
@@ -74,7 +83,16 @@ def build_graph():
         _despues_de_entrada,
         {"completar": "completar", "clasificar": "clasificar", "vision": "vision", "fin": END},
     )
-    g.add_edge("vision", "responder")
+    g.add_conditional_edges(
+        "vision",
+        _despues_de_vision,
+        {"vision_plato": "vision_plato", "responder": "responder"},
+    )
+    g.add_conditional_edges(
+        "vision_plato",
+        _despues_de_extraer,
+        {"guardar": "guardar", "aclarar": "aclarar", "responder": "responder"},
+    )
     g.add_conditional_edges(
         "clasificar", _despues_de_clasificar, {"extraer": "extraer", "fin": END}
     )

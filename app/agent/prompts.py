@@ -105,7 +105,26 @@ podómetro: pasos, distancia, calorías, anillos de actividad)
 
 Respondé SOLO el JSON del schema."""
 
+
+def system_vision_plato(ahora: datetime) -> str:
+    return f"""\
+Mirá la foto del plato/comida y extraé el registro de comida. Identificá qué es
+(cocina argentina frecuente: milanesas, asado, empanadas, pastas, pizza, mate con
+facturas) y estimá porciones y macros de forma realista para lo que se VE.
+
+IMPORTANTE: si el mensaje trae texto del usuario (caption), ese texto MANDA sobre la
+imagen: si dice "cené esto anoche", el momento/fecha salen del texto; si aclara
+ingredientes o porciones, usá eso.
+
+{bloque_tiempo(ahora)}
+
+Sin caption ni pista temporal: asumí que la comida es de ahora (fecha de hoy, momento
+según la hora actual). Las calorías/macros son ESTIMACIONES (confianza según qué tan
+claro se ve el plato).
+
+Respondé SOLO el JSON del schema."""
+
+
 # Placeholders: se completan en sus steps.
-SYSTEM_VISION_PLATO = "PLACEHOLDER step 4.2: extraer comida de foto de plato"
 SYSTEM_VISION_CAPTURA = "PLACEHOLDER step 4.3: extraer pasos/distancia de captura de app"
 SYSTEM_EXAMEN = "PLACEHOLDER step 6.2: extraer valores y rangos de examen"

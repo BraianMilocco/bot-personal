@@ -148,12 +148,27 @@ async def vision_clasificar(state):
             "Vi la imagen pero no parece un plato, un estudio médico ni una captura de "
             "actividad. Mandame alguna de esas y la registro."
         )
-    elif clasificacion.categoria in ("plato", "estudio", "captura_app"):
-        # ponytail: placeholder hasta 4.2 (plato), 4.3 (captura) y 6.x (estudio)
+    elif clasificacion.categoria in ("estudio", "captura_app"):
+        # ponytail: placeholder hasta 4.3 (captura) y 6.x (estudio)
         update["respuesta"] = (
             f"Detecté una imagen de tipo {clasificacion.categoria}, todavía estoy "
             "aprendiendo a procesarla. Pronto va a estar disponible."
         )
+    return update
+
+
+@_con_manejo
+async def vision_plato(state):
+    """Foto de plato → ComidaExtraida; de acá el flujo sigue igual que texto."""
+    ahora = ahora_usuario(state)
+    comida = await llm.extraer(
+        ComidaExtraida,
+        _mensaje_con_imagen(prompts.system_vision_plato(ahora), state),
+        model=settings.vision_model,
+    )
+    update = {"extraccion": comida, "intent": "registrar_comida"}
+    if comida.necesita_aclaracion:
+        update["pendiente_aclaracion"] = comida.necesita_aclaracion
     return update
 
 
