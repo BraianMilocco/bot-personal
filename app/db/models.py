@@ -63,6 +63,7 @@ class Peso(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     fecha: Mapped[date] = mapped_column(Date)
     peso_kg: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Comida(Base):
