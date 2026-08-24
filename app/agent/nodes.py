@@ -8,7 +8,13 @@ from zoneinfo import ZoneInfo
 from app.agent import llm, prompts
 from app.db import repository as repo
 from app.db.session import get_session
-from app.schemas import ComidaExtraida, IntentResult
+from app.schemas import (
+    ActividadExtraida,
+    ComidaExtraida,
+    IntentResult,
+    PerfilUpdate,
+    PesoExtraido,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -128,49 +134,111 @@ async def clasificar(state):
     return {"intent": resultado.intent}
 
 
+_EXTRACTORES = {
+    "registrar_comida": (ComidaExtraida, prompts.system_extraccion_comida),
+    "registrar_actividad": (ActividadExtraida, prompts.system_extraccion_actividad),
+    "registrar_peso": (PesoExtraido, prompts.system_extraccion_peso),
+    "actualizar_perfil": (PerfilUpdate, lambda ahora: prompts.system_perfil()),
+}
+
+
 @_con_manejo
 async def extraer(state):
     ahora = ahora_usuario(state)
     intent = state.get("intent")
-    if intent == "registrar_comida":
-        comida = await llm.extraer(
-            ComidaExtraida,
-            [
-                {"role": "system", "content": prompts.system_extraccion_comida(ahora)},
-                {"role": "user", "content": state["input_text"]},
-            ],
-        )
-        update = {"extraccion": comida}
-        if comida.necesita_aclaracion:
-            update["pendiente_aclaracion"] = comida.necesita_aclaracion
-        return update
-    return {"respuesta": "Todavía no sé manejar ese tipo de mensaje, pronto voy a poder."}
+    if intent not in _EXTRACTORES:
+        return {"respuesta": "Todavía no sé manejar ese tipo de mensaje, pronto voy a poder."}
+    schema, system = _EXTRACTORES[intent]
+    extraccion = await llm.extraer(
+        schema,
+        [
+            {"role": "system", "content": system(ahora)},
+            {"role": "user", "content": state["input_text"]},
+        ],
+    )
+    update = {"extraccion": extraccion}
+    if getattr(extraccion, "necesita_aclaracion", None):
+        update["pendiente_aclaracion"] = extraccion.necesita_aclaracion
+    return update
 
 
 @_con_manejo
 async def guardar(state):
     ahora = ahora_usuario(state)
     extraccion = state["extraccion"]
+    user_id = state["user_id"]
+    origen = state.get("origen", "texto")
+    raw = state.get("input_text")
+
     if isinstance(extraccion, ComidaExtraida):
         fecha = extraccion.fecha or ahora.date()
         momento = extraccion.momento or momento_por_hora(ahora.time())
         async with get_session() as session:
             await repo.crear_comida(
                 session,
-                state["user_id"],
+                user_id,
                 fecha=fecha,
                 momento=momento,
                 descripcion=extraccion.descripcion_normalizada,
-                origen=state.get("origen", "texto"),
+                origen=origen,
                 hora_aprox=extraccion.hora_aprox,
                 kcal_est=extraccion.kcal_est,
                 proteinas_g=extraccion.proteinas_g,
                 carbs_g=extraccion.carbs_g,
                 grasas_g=extraccion.grasas_g,
-                raw_input=state.get("input_text"),
+                raw_input=raw,
             )
         return {"extraccion": extraccion.model_copy(update={"fecha": fecha, "momento": momento})}
+
+    if isinstance(extraccion, ActividadExtraida):
+        fecha = extraccion.fecha or ahora.date()
+        async with get_session() as session:
+            if extraccion.tipo == "pasos":
+                await repo.upsert_metricas_dia(
+                    session, user_id, fecha=fecha, pasos_total=extraccion.pasos, fuente=origen
+                )
+            else:
+                await repo.crear_actividad(
+                    session,
+                    user_id,
+                    fecha=fecha,
+                    tipo=extraccion.tipo,
+                    origen=origen,
+                    hora_aprox=extraccion.hora_aprox,
+                    duracion_min=extraccion.duracion_min,
+                    intensidad=extraccion.intensidad,
+                    pasos=extraccion.pasos,
+                    distancia_km=extraccion.distancia_km,
+                    kcal_est=extraccion.kcal_est,
+                    notas=extraccion.notas,
+                    raw_input=raw,
+                )
+        return {"extraccion": extraccion.model_copy(update={"fecha": fecha})}
+
+    if isinstance(extraccion, PesoExtraido):
+        fecha = extraccion.fecha or ahora.date()
+        async with get_session() as session:
+            await repo.crear_peso(session, user_id, fecha=fecha, peso_kg=extraccion.peso_kg)
+            await repo.upsert_perfil(session, user_id, peso_actual_kg=extraccion.peso_kg)
+        return {"extraccion": extraccion.model_copy(update={"fecha": fecha})}
+
+    if isinstance(extraccion, PerfilUpdate):
+        campos = {k: v for k, v in extraccion.model_dump().items() if v is not None}
+        if not campos:
+            return {"respuesta": "No encontré datos de perfil para actualizar."}
+        async with get_session() as session:
+            await repo.upsert_perfil(session, user_id, **campos)
+        return {}
+
     return {"respuesta": RESPUESTA_ERROR}
+
+
+def _dia_legible(fecha, hoy) -> str:
+    if fecha == hoy:
+        return "hoy"
+    if (hoy - fecha).days == 1:
+        return "ayer"
+    return f"el {fecha.strftime('%d/%m')}"
 
 
 @_con_manejo
@@ -179,12 +247,36 @@ async def responder(state):
         return {}
     extraccion = state.get("extraccion")
     nombre = state.get("nombre", "")
+    hoy = ahora_usuario(state).date()
+
     if isinstance(extraccion, ComidaExtraida):
-        detalle = f"{extraccion.descripcion_normalizada} — {extraccion.momento}"
+        detalle = f"{extraccion.descripcion_normalizada} — {extraccion.momento} "
+        detalle += _dia_legible(extraccion.fecha, hoy)
         if extraccion.kcal_est:
             detalle += f" (~{extraccion.kcal_est} kcal aprox"
             if extraccion.proteinas_g:
                 detalle += f", ~{extraccion.proteinas_g}g prot"
             detalle += ")"
         return {"respuesta": f"🍽 Anotado, {nombre}: {detalle}. /deshacer si hubo error."}
+
+    if isinstance(extraccion, ActividadExtraida):
+        if extraccion.tipo == "pasos":
+            detalle = f"{extraccion.pasos or '?'} pasos {_dia_legible(extraccion.fecha, hoy)}"
+        else:
+            detalle = extraccion.tipo
+            if extraccion.duracion_min:
+                detalle += f" {extraccion.duracion_min}'"
+            if extraccion.intensidad:
+                detalle += f" ({extraccion.intensidad})"
+            detalle += f" {_dia_legible(extraccion.fecha, hoy)}"
+        return {"respuesta": f"🏃 Anotado, {nombre}: {detalle}. /deshacer si hubo error."}
+
+    if isinstance(extraccion, PesoExtraido):
+        detalle = f"{extraccion.peso_kg} kg {_dia_legible(extraccion.fecha, hoy)}"
+        return {"respuesta": f"⚖️ Anotado, {nombre}: {detalle}. /deshacer si hubo error."}
+
+    if isinstance(extraccion, PerfilUpdate):
+        campos = [k for k, v in extraccion.model_dump().items() if v is not None]
+        return {"respuesta": f"📝 Perfil actualizado, {nombre}: {', '.join(campos)}."}
+
     return {"respuesta": "Listo."}
