@@ -1,6 +1,8 @@
 import base64
 import logging
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -10,8 +12,9 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 from app.agent import llm
 from app.agent.graph import procesar_mensaje
 from app.config import settings
+from app.db import consultas
 from app.db import repository as repo
-from app.db.models import User
+from app.db.models import Perfil, User
 from app.db.session import get_session
 
 logger = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ _AYUDA = (
     "¡Hola{nombre}! Soy tu asesor personal. Contame qué comiste, qué actividad "
     "hiciste, tu peso, o mandame fotos de platos, capturas de tu app de pasos, "
     "audios o PDFs de estudios. Después podés preguntarme por tus datos.\n"
-    "Comandos: /start"
+    "Comandos: /hoy /semana /perfil /deshacer"
 )
 
 # ponytail: cache simple con TTL, invalidación fina si algún día hace falta
@@ -112,6 +115,100 @@ async def cmd_deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _log_mensaje(update, "comando", inicio)
 
 
+def _hoy_de(usuario: dict):
+    return datetime.now(ZoneInfo(usuario["tz"])).date()
+
+
+def _formato_dia(resumen: dict) -> str:
+    lineas = [f"📅 {resumen['fecha'].strftime('%d/%m')}"]
+    comidas = resumen["comidas"]
+    if comidas:
+        lineas.append(
+            f"🍽 {len(comidas)} comida(s) (~{resumen['kcal_total']} kcal, "
+            f"~{resumen['proteinas_total']}g prot)"
+        )
+        lineas.extend(
+            f" • {c.momento}: {c.descripcion}" + (f" (~{c.kcal_est} kcal)" if c.kcal_est else "")
+            for c in comidas
+        )
+    else:
+        lineas.append("🍽 sin comidas cargadas")
+    if resumen["actividades"]:
+        for a in resumen["actividades"]:
+            detalle = a.tipo + (f" {a.duracion_min}'" if a.duracion_min else "")
+            lineas.append(f"🏃 {detalle}")
+    if resumen["pasos_total"]:
+        lineas.append(f"👟 {resumen['pasos_total']} pasos")
+    if resumen["peso"]:
+        lineas.append(f"⚖️ {resumen['peso']} kg")
+    return "\n".join(lineas)
+
+
+async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "comando")
+    if usuario is None:
+        return
+    async with get_session() as session:
+        resumen = await consultas.resumen_dia(session, usuario["user_id"], _hoy_de(usuario))
+    await update.message.reply_text(_formato_dia(resumen))
+    _log_mensaje(update, "comando", inicio)
+
+
+async def cmd_semana(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "comando")
+    if usuario is None:
+        return
+    hoy = _hoy_de(usuario)
+    async with get_session() as session:
+        prom = await consultas.promedios_semana(session, usuario["user_id"], hoy)
+        resumen = await consultas.resumen_semana(session, usuario["user_id"], hoy)
+    lineas = [
+        f"📊 Semana del {prom['desde'].strftime('%d/%m')}",
+        f"~{prom['kcal_dia'] or 0} kcal/día · ~{prom['proteinas_dia'] or 0}g prot/día · "
+        f"{prom['sesiones']} sesión(es) · {prom['pasos_dia'] or 0} pasos/día",
+        "",
+    ]
+    for dia in resumen["dias"]:
+        partes = [dia["fecha"].strftime("%a %d/%m")]
+        partes.append(f"{dia['kcal_total']} kcal" if dia["comidas"] else "sin comidas")
+        if dia["actividades"]:
+            partes.append(f"{len(dia['actividades'])} actividad(es)")
+        if dia["pasos_total"]:
+            partes.append(f"{dia['pasos_total']} pasos")
+        lineas.append(" · ".join(partes))
+    await update.message.reply_text("\n".join(lineas))
+    _log_mensaje(update, "comando", inicio)
+
+
+async def cmd_perfil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "comando")
+    if usuario is None:
+        return
+    async with get_session() as session:
+        perfil = await session.get(Perfil, usuario["user_id"])
+    if perfil is None:
+        await update.message.reply_text(
+            "Todavía no tenés perfil. Contame tu objetivo, altura o restricciones y lo armo."
+        )
+        return
+    lineas = [f"👤 Perfil de {usuario['nombre']}"]
+    campos = (
+        ("Objetivo", perfil.objetivo),
+        ("Restricciones", perfil.restricciones),
+        ("Altura", f"{perfil.altura_cm} cm" if perfil.altura_cm else None),
+        ("Peso actual", f"{perfil.peso_actual_kg} kg" if perfil.peso_actual_kg else None),
+        ("Sexo", perfil.sexo),
+        ("Nacimiento", perfil.fecha_nac.isoformat() if perfil.fecha_nac else None),
+        ("Notas", perfil.notas),
+    )
+    lineas.extend(f"• {etiqueta}: {valor}" for etiqueta, valor in campos if valor)
+    await update.message.reply_text("\n".join(lineas))
+    _log_mensaje(update, "comando", inicio)
+
+
 async def _procesar_texto(update: Update, usuario: dict, texto: str, origen: str) -> None:
     respuesta = await procesar_mensaje(
         {
@@ -200,6 +297,9 @@ def build_application() -> Application:
     application = Application.builder().token(settings.telegram_token).build()
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("deshacer", cmd_deshacer))
+    application.add_handler(CommandHandler("hoy", cmd_hoy))
+    application.add_handler(CommandHandler("semana", cmd_semana))
+    application.add_handler(CommandHandler("perfil", cmd_perfil))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, mensaje_texto))
     application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, mensaje_audio))
     application.add_handler(MessageHandler(filters.PHOTO, mensaje_foto))

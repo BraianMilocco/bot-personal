@@ -23,3 +23,4 @@
 | 4 | 4.3 | done | step 4.3: capturas de actividad | 2026-08-24 |
 | 5 | 5.1 | done | step 5.1: tools de consulta | 2026-08-24 |
 | 5 | 5.2 | done | step 5.2: charla multi-turno | 2026-08-24 |
+| 5 | 5.3 | done | step 5.3: comandos determinísticos | 2026-08-24 |
