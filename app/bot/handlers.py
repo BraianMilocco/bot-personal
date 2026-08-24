@@ -18,6 +18,7 @@ from app.db import consultas
 from app.db import repository as repo
 from app.db.models import Perfil, User
 from app.db.session import get_session
+from app.informe import generar_informe
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ _AYUDA = (
     "¡Hola{nombre}! Soy tu asesor personal. Contame qué comiste, qué actividad "
     "hiciste, tu peso, o mandame fotos de platos, capturas de tu app de pasos, "
     "audios o PDFs de estudios. Después podés preguntarme por tus datos.\n"
-    "Comandos: /hoy /semana /perfil /deshacer"
+    "Comandos: /hoy /semana /perfil /examenes /informe /deshacer"
 )
 
 # ponytail: cache simple con TTL, invalidación fina si algún día hace falta
@@ -256,6 +257,29 @@ async def cmd_examen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     _log_mensaje(update, "comando", inicio)
 
 
+MAX_MENSAJE_TELEGRAM = 3500
+
+
+async def cmd_informe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "comando")
+    if usuario is None:
+        return
+    args = getattr(context, "args", None) or []
+    destinatario = args[0].lower() if args else "medico"
+    async with get_session() as session:
+        texto = await generar_informe(
+            session, usuario["user_id"], usuario["nombre"], _hoy_de(usuario), destinatario
+        )
+    if len(texto) <= MAX_MENSAJE_TELEGRAM:
+        await update.message.reply_text(texto)
+    else:
+        await update.message.reply_document(
+            document=texto.encode(), filename=f"informe_{_hoy_de(usuario).isoformat()}.txt"
+        )
+    _log_mensaje(update, "comando", inicio)
+
+
 async def _procesar_texto(update: Update, usuario: dict, texto: str, origen: str) -> None:
     respuesta = await procesar_mensaje(
         {
@@ -394,6 +418,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("perfil", cmd_perfil))
     application.add_handler(CommandHandler("examenes", cmd_examenes))
     application.add_handler(CommandHandler("examen", cmd_examen))
+    application.add_handler(CommandHandler("informe", cmd_informe))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, mensaje_texto))
     application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, mensaje_audio))
     application.add_handler(MessageHandler(filters.PHOTO, mensaje_foto))
