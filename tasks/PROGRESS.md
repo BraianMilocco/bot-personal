@@ -8,3 +8,4 @@
 | 0 | 0.4 | done | step 0.4: bot polling + whitelist db | 2026-08-24 |
 | 1 | 1.1 | done | step 1.1: alembic + users | 2026-08-24 |
 | 1 | 1.2 | done | step 1.2: tablas de registro | 2026-08-24 |
+| 1 | 1.3 | done | step 1.3: exámenes y conversación | 2026-08-24 |

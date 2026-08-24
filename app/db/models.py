@@ -124,3 +124,43 @@ class MetricasDia(Base):
     fecha: Mapped[date] = mapped_column(Date)
     pasos_total: Mapped[int | None] = mapped_column(nullable=True)
     fuente: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Examen(Base):
+    __tablename__ = "examenes"
+    __table_args__ = (Index("ix_examenes_user_fecha", "user_id", "fecha_estudio"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    fecha_estudio: Mapped[date] = mapped_column(Date)
+    tipo: Mapped[str] = mapped_column(Text)
+    archivo_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resumen: Mapped[str | None] = mapped_column(Text, nullable=True)
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ExamenValor(Base):
+    __tablename__ = "examen_valores"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    examen_id: Mapped[int] = mapped_column(ForeignKey("examenes.id"), index=True)
+    nombre: Mapped[str] = mapped_column(Text)
+    valor: Mapped[str] = mapped_column(Text)
+    unidad: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ref_min: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ref_max: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fuera_de_rango: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+
+class ConversacionMensaje(Base):
+    __tablename__ = "conversacion_mensajes"
+    __table_args__ = (
+        Index("ix_conversacion_user_creado", "user_id", "creado_en"),
+        CheckConstraint("rol IN ('user', 'assistant')", name="ck_conversacion_rol"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    rol: Mapped[str] = mapped_column(String)
+    contenido: Mapped[str] = mapped_column(Text)
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
