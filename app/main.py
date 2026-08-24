@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.bot.handlers import build_application, seed_users
+from app.bot.handlers import build_application, registrar_comandos, seed_users
 from app.bot.proactivo import crear_scheduler
 from app.config import settings
 from app.db.session import engine
@@ -13,12 +13,15 @@ logging.basicConfig(
     level=settings.log_level,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+# httpx loguea la URL completa de la API de Telegram, que incluye el token
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
 async def _arrancar_bot(app: FastAPI) -> None:
     application = build_application()
     await application.initialize()
+    await registrar_comandos(application)
     await application.start()
     await application.updater.start_polling()
     app.state.bot = application

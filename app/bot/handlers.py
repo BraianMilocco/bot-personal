@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import pymupdf as fitz
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.agent import llm
@@ -432,6 +432,23 @@ async def mensaje_no_soportado(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text(
         "Ese formato no lo manejo. Acepto: texto, notas de voz/audio, fotos y PDFs."
     )
+
+
+COMANDOS_BOT = [
+    BotCommand("start", "Ayuda y qué puedo hacer"),
+    BotCommand("hoy", "Resumen del día"),
+    BotCommand("semana", "Resumen de la semana"),
+    BotCommand("perfil", "Tu perfil y objetivo"),
+    BotCommand("examenes", "Tus exámenes cargados"),
+    BotCommand("examen", "Detalle de un examen (/examen N)"),
+    BotCommand("informe", "Informe para médico/nutricionista"),
+    BotCommand("deshacer", "Borra el último registro"),
+]
+
+
+async def registrar_comandos(application: Application) -> None:
+    """Publica el menú de comandos en Telegram (botón / del chat)."""
+    await application.bot.set_my_commands(COMANDOS_BOT)
 
 
 def build_application() -> Application:

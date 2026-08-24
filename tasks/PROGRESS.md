@@ -33,3 +33,4 @@
 | 8 | 8.1 | done | step 8.1: rate limit y costos | 2026-08-24 |
 | 8 | 8.2 | done | step 8.2: red team casero | 2026-08-24 |
 | 8 | 8.3 | done | step 8.3: backup y cierre | 2026-08-24 |
+| post | comandos+seed | done | post: menú de comandos + migración seed ALLOWED_USERS | 2026-08-24 |
