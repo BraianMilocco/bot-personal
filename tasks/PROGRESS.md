@@ -21,3 +21,4 @@
 | 4 | 4.1 | done | step 4.1: clasificación de imagen | 2026-08-24 |
 | 4 | 4.2 | done | step 4.2: comidas por foto | 2026-08-24 |
 | 4 | 4.3 | done | step 4.3: capturas de actividad | 2026-08-24 |
+| 5 | 5.1 | done | step 5.1: tools de consulta | 2026-08-24 |
