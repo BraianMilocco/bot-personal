@@ -148,12 +148,29 @@ async def vision_clasificar(state):
             "Vi la imagen pero no parece un plato, un estudio médico ni una captura de "
             "actividad. Mandame alguna de esas y la registro."
         )
-    elif clasificacion.categoria in ("estudio", "captura_app"):
-        # ponytail: placeholder hasta 4.3 (captura) y 6.x (estudio)
+    elif clasificacion.categoria == "estudio":
+        # ponytail: placeholder hasta 6.x
         update["respuesta"] = (
-            f"Detecté una imagen de tipo {clasificacion.categoria}, todavía estoy "
-            "aprendiendo a procesarla. Pronto va a estar disponible."
+            "Detecté un estudio médico, todavía estoy aprendiendo a procesarlos. "
+            "Pronto va a estar disponible."
         )
+    return update
+
+
+@_con_manejo
+async def vision_captura(state):
+    """Captura de app de actividad → ActividadExtraida (pasos → metricas_dia)."""
+    ahora = ahora_usuario(state)
+    actividad = await llm.extraer(
+        ActividadExtraida,
+        _mensaje_con_imagen(prompts.system_vision_captura(ahora), state),
+        model=settings.vision_model,
+    )
+    update = {"extraccion": actividad, "intent": "registrar_actividad"}
+    if actividad.fecha is None:
+        update["fecha_asumida"] = True
+    if actividad.necesita_aclaracion:
+        update["pendiente_aclaracion"] = actividad.necesita_aclaracion
     return update
 
 
@@ -320,7 +337,10 @@ async def responder(state):
             if extraccion.intensidad:
                 detalle += f" ({extraccion.intensidad})"
             detalle += f" {_dia_legible(extraccion.fecha, hoy)}"
-        return {"respuesta": f"🏃 Anotado, {nombre}: {detalle}. /deshacer si hubo error."}
+        respuesta = f"🏃 Anotado, {nombre}: {detalle}."
+        if state.get("fecha_asumida"):
+            respuesta += " Si era de otro día, avisame."
+        return {"respuesta": respuesta + " /deshacer si hubo error."}
 
     if isinstance(extraccion, PesoExtraido):
         detalle = f"{extraccion.peso_kg} kg {_dia_legible(extraccion.fecha, hoy)}"

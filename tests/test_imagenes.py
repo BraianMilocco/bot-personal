@@ -72,6 +72,33 @@ async def test_foto_de_plato_registra_comida(cliente_mock, user_id, session):
     assert fila.momento == momento_por_hora(hora_local)
 
 
+async def test_captura_fit_carga_pasos_y_segunda_pisa(cliente_mock, user_id, session):
+    """DoD 4.3: captura carga pasos_total del día; una segunda captura del día pisa."""
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.db.models import MetricasDia
+
+    cliente_mock.chat.completions.create.side_effect = [
+        respuesta_llm('{"categoria": "captura_app"}'),
+        respuesta_llm('{"tipo": "pasos", "pasos": 5000}'),  # sin fecha visible
+        respuesta_llm('{"categoria": "captura_app"}'),
+        respuesta_llm('{"tipo": "pasos", "pasos": 8400}'),
+    ]
+    respuesta = await procesar_mensaje(_estado(user_id))
+    assert "5000 pasos hoy" in respuesta
+    assert "Si era de otro día, avisame" in respuesta  # fecha no visible → asumió hoy
+
+    respuesta = await procesar_mensaje(_estado(user_id))
+    assert "8400 pasos" in respuesta
+
+    filas = (await session.scalars(select(MetricasDia).where(MetricasDia.user_id == user_id))).all()
+    assert len(filas) == 1  # upsert: una sola fila para el día
+    assert filas[0].fecha == date.today()
+    assert filas[0].pasos_total == 8400  # la segunda pisó a la primera
+
+
 async def test_caption_viaja_junto_a_la_imagen(cliente_mock, user_id):
     cliente_mock.chat.completions.create.return_value = respuesta_llm('{"categoria": "otro"}')
     await nodes.vision_clasificar(_estado(user_id, caption="es mi almuerzo"))

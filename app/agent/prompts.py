@@ -125,6 +125,20 @@ claro se ve el plato).
 Respondé SOLO el JSON del schema."""
 
 
+def system_vision_captura(ahora: datetime) -> str:
+    return f"""\
+La imagen es una captura de una app de actividad (Google Fit, smartwatch, podómetro).
+Extraé lo que se VE: pasos, distancia_km, kcal_est y la fecha si aparece en pantalla.
+
+- Conteo diario de pasos (el caso típico) → tipo: "pasos" con el total del día.
+- Sesión puntual (una corrida/salida con duración) → tipo de la actividad + duracion_min.
+- Si en la captura NO se ve fecha, dejá fecha en null (el sistema asume hoy y avisa).
+- El caption del usuario manda sobre la imagen (ej: "esto es de ayer" → fecha de ayer).
+
+{bloque_tiempo(ahora)}
+
+Respondé SOLO el JSON del schema."""
+
+
 # Placeholders: se completan en sus steps.
-SYSTEM_VISION_CAPTURA = "PLACEHOLDER step 4.3: extraer pasos/distancia de captura de app"
 SYSTEM_EXAMEN = "PLACEHOLDER step 6.2: extraer valores y rangos de examen"

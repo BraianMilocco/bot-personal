@@ -24,6 +24,7 @@ class AgentState(TypedDict, total=False):
     pendiente_aclaracion: str | None
     pendiente: dict | None
     clasificacion_imagen: str | None
+    fecha_asumida: bool | None
     respuesta: str | None
 
 
@@ -42,6 +43,8 @@ def _despues_de_vision(state: AgentState) -> str:
         return "responder"
     if state.get("clasificacion_imagen") == "plato":
         return "vision_plato"
+    if state.get("clasificacion_imagen") == "captura_app":
+        return "vision_captura"
     return "responder"
 
 
@@ -70,6 +73,7 @@ def build_graph():
     g.add_node("entrada", nodes.entrada)
     g.add_node("vision", nodes.vision_clasificar)
     g.add_node("vision_plato", nodes.vision_plato)
+    g.add_node("vision_captura", nodes.vision_captura)
     g.add_node("clasificar", nodes.clasificar)
     g.add_node("extraer", nodes.extraer)
     g.add_node("aclarar", nodes.aclarar)
@@ -86,13 +90,18 @@ def build_graph():
     g.add_conditional_edges(
         "vision",
         _despues_de_vision,
-        {"vision_plato": "vision_plato", "responder": "responder"},
+        {
+            "vision_plato": "vision_plato",
+            "vision_captura": "vision_captura",
+            "responder": "responder",
+        },
     )
-    g.add_conditional_edges(
-        "vision_plato",
-        _despues_de_extraer,
-        {"guardar": "guardar", "aclarar": "aclarar", "responder": "responder"},
-    )
+    for nodo_vision in ("vision_plato", "vision_captura"):
+        g.add_conditional_edges(
+            nodo_vision,
+            _despues_de_extraer,
+            {"guardar": "guardar", "aclarar": "aclarar", "responder": "responder"},
+        )
     g.add_conditional_edges(
         "clasificar", _despues_de_clasificar, {"extraer": "extraer", "fin": END}
     )

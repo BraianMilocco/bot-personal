@@ -20,3 +20,4 @@
 | 3 | 3.4 | done | step 3.4: registro por audio | 2026-08-24 |
 | 4 | 4.1 | done | step 4.1: clasificación de imagen | 2026-08-24 |
 | 4 | 4.2 | done | step 4.2: comidas por foto | 2026-08-24 |
+| 4 | 4.3 | done | step 4.3: capturas de actividad | 2026-08-24 |
