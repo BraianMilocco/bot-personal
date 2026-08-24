@@ -161,5 +161,17 @@ Contexto del usuario:
 {bloque_tiempo(ahora)}"""
 
 
-# Placeholders: se completan en sus steps.
-SYSTEM_EXAMEN = "PLACEHOLDER step 6.2: extraer valores y rangos de examen"
+SYSTEM_EXAMEN = """\
+El contenido es un estudio/examen médico (análisis de laboratorio). Extraé:
+- fecha_estudio: la fecha del estudio si figura (no la de hoy).
+- tipo: "sangre", "orina" u "otro".
+- valores: lista de {nombre, valor, unidad, ref_min, ref_max}.
+
+Reglas ESTRICTAS:
+- Copiá los valores y rangos EXACTAMENTE como figuran impresos (texto crudo: "<5",
+  "1,2", "negativo" van tal cual). NO conviertas unidades ni redondees.
+- ref_min/ref_max SOLO si el propio estudio imprime el rango de referencia; si no
+  trae rango, dejalos en null. NUNCA inventes rangos de referencia.
+- No interpretes ni diagnostiques: solo transcribí.
+
+Respondé SOLO el JSON del schema."""

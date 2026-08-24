@@ -27,6 +27,7 @@ class AgentState(TypedDict, total=False):
     fecha_asumida: bool | None
     es_estudio: bool | None
     archivo_path: str | None
+    examen_id: int | None
     respuesta: str | None
 
 

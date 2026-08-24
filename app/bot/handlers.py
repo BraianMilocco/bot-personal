@@ -1,9 +1,7 @@
 import base64
-import hashlib
 import logging
 import time
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pymupdf as fitz
@@ -14,6 +12,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from app.agent import llm
 from app.agent.graph import procesar_mensaje
+from app.archivos import guardar_archivo_examen
 from app.config import settings
 from app.db import consultas
 from app.db import repository as repo
@@ -291,16 +290,6 @@ MAX_PDF_BYTES = 20 * 1024 * 1024
 MIN_CHARS_PDF = 30
 
 
-def _guardar_archivo_examen(user_id: int, contenido: bytes, extension: str) -> str:
-    """Guarda el archivo con nombre hasheado en data/examenes/{user_id}/."""
-    carpeta = Path("data/examenes") / str(user_id)
-    carpeta.mkdir(parents=True, exist_ok=True)
-    nombre = hashlib.sha256(contenido).hexdigest()[:16] + extension
-    ruta = carpeta / nombre
-    ruta.write_bytes(contenido)
-    return str(ruta)
-
-
 def extraer_pdf(pdf_bytes: bytes) -> tuple[str | None, str | None]:
     """Devuelve (pdf_text, image_b64): texto si el PDF lo tiene, si no pág 1 rasterizada."""
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
@@ -322,7 +311,7 @@ async def mensaje_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     archivo = await documento.get_file()
     pdf_bytes = bytes(await archivo.download_as_bytearray())
-    ruta = _guardar_archivo_examen(usuario["user_id"], pdf_bytes, ".pdf")
+    ruta = guardar_archivo_examen(usuario["user_id"], pdf_bytes, ".pdf")
     pdf_text, imagen_b64 = extraer_pdf(pdf_bytes)
     respuesta = await procesar_mensaje(
         {

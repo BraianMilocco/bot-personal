@@ -25,3 +25,4 @@
 | 5 | 5.2 | done | step 5.2: charla multi-turno | 2026-08-24 |
 | 5 | 5.3 | done | step 5.3: comandos determinísticos | 2026-08-24 |
 | 6 | 6.1 | done | step 6.1: ingesta de estudios | 2026-08-24 |
+| 6 | 6.2 | done | step 6.2: extracción y comparación | 2026-08-24 |

@@ -73,7 +73,16 @@ async def test_handler_pdf_manda_estado_correcto(user_id, monkeypatch, tmp_path)
     assert len(ruta.stem) == 16
 
 
-async def test_pdf_llega_al_placeholder_de_examen(cliente_mock, user_id):
+EXAMEN_JSON = (
+    '{"fecha_estudio": "2026-08-01", "tipo": "sangre",'
+    ' "valores": [{"nombre": "glucemia", "valor": "95", "unidad": "mg/dl",'
+    ' "ref_min": "70", "ref_max": "110"}]}'
+)
+
+
+async def test_pdf_llega_al_nodo_examen(cliente_mock, user_id, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    cliente_mock.chat.completions.create.return_value = respuesta_llm(EXAMEN_JSON)
     respuesta = await procesar_mensaje(
         {
             "telegram_id": 424242,
@@ -84,12 +93,15 @@ async def test_pdf_llega_al_placeholder_de_examen(cliente_mock, user_id):
             "origen": "imagen",
         }
     )
-    assert "Recibí tu estudio" in respuesta
-    cliente_mock.chat.completions.create.assert_not_called()
+    assert "Guardé tu estudio" in respuesta
 
 
-async def test_foto_estudio_llega_al_placeholder(cliente_mock, user_id):
-    cliente_mock.chat.completions.create.return_value = respuesta_llm('{"categoria": "estudio"}')
+async def test_foto_estudio_llega_al_nodo_examen(cliente_mock, user_id, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    cliente_mock.chat.completions.create.side_effect = [
+        respuesta_llm('{"categoria": "estudio"}'),
+        respuesta_llm(EXAMEN_JSON),
+    ]
     respuesta = await procesar_mensaje(
         {
             "telegram_id": 424242,
@@ -100,4 +112,4 @@ async def test_foto_estudio_llega_al_placeholder(cliente_mock, user_id):
             "origen": "imagen",
         }
     )
-    assert "Recibí tu estudio" in respuesta
+    assert "Guardé tu estudio" in respuesta

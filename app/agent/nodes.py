@@ -1,13 +1,17 @@
 """Nodos del grafo. Cada nodo captura sus errores: el grafo nunca explota al handler."""
 
+import base64
 import functools
 import json
 import logging
+import re
 from datetime import datetime, time
+from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
 from app.agent import llm, prompts
 from app.agent import tools as tools_mod
+from app.archivos import guardar_archivo_examen
 from app.config import settings
 from app.db import consultas
 from app.db import repository as repo
@@ -17,6 +21,7 @@ from app.schemas import (
     ActividadExtraida,
     ClasificacionImagen,
     ComidaExtraida,
+    ExamenExtraido,
     IntentResult,
     PerfilUpdate,
     PesoExtraido,
@@ -155,14 +160,97 @@ async def vision_clasificar(state):
     return update
 
 
+_RE_NUMERO = re.compile(r"[-+]?\d+(?:[.,]\d+)?")
+
+
+def parsear_numero(texto: str | None) -> Decimal | None:
+    """Parseo defensivo: '95', '1,2', '<5', '38 mg/dl' → Decimal; 'negativo' → None."""
+    if not texto:
+        return None
+    match = _RE_NUMERO.search(texto)
+    if not match:
+        return None
+    try:
+        return Decimal(match.group().replace(",", "."))
+    except InvalidOperation:
+        return None
+
+
+def marcar_fuera_de_rango(valores) -> list[dict]:
+    """Compara valor vs rango EN CÓDIGO. fuera_de_rango solo si el estudio trae rango."""
+    filas = []
+    for v in valores:
+        numero = parsear_numero(v.valor)
+        minimo = parsear_numero(v.ref_min)
+        maximo = parsear_numero(v.ref_max)
+        fuera = None
+        if numero is not None and (minimo is not None or maximo is not None):
+            fuera = (minimo is not None and numero < minimo) or (
+                maximo is not None and numero > maximo
+            )
+        filas.append(
+            {
+                "nombre": v.nombre,
+                "valor": v.valor,
+                "unidad": v.unidad,
+                "ref_min": v.ref_min,
+                "ref_max": v.ref_max,
+                "fuera_de_rango": fuera,
+            }
+        )
+    return filas
+
+
 @_con_manejo
 async def examen_extraer(state):
-    """Nodo de extracción de exámenes (PDF texto, PDF escaneado o foto)."""
-    # ponytail: placeholder hasta 6.2 — acá llega el estudio por las 3 vías
-    return {
-        "respuesta": (
-            "Recibí tu estudio. Todavía estoy aprendiendo a leerlos, pronto va a estar disponible."
+    """Estudio (PDF texto, PDF escaneado o foto) → extraer valores → comparar → persistir."""
+    ahora = ahora_usuario(state)
+    if state.get("pdf_text"):
+        contenido = state["pdf_text"]
+        if state.get("input_text"):
+            contenido = f"{state['input_text']}\n\n{contenido}"
+        examen = await llm.extraer(
+            ExamenExtraido,
+            [
+                {"role": "system", "content": prompts.SYSTEM_EXAMEN},
+                {"role": "user", "content": contenido},
+            ],
         )
+    else:
+        examen = await llm.extraer(
+            ExamenExtraido,
+            _mensaje_con_imagen(prompts.SYSTEM_EXAMEN, state),
+            model=settings.vision_model,
+        )
+
+    valores = marcar_fuera_de_rango(examen.valores)
+
+    archivo_path = state.get("archivo_path")
+    if archivo_path is None and state.get("image_b64"):
+        archivo_path = guardar_archivo_examen(
+            state["user_id"], base64.b64decode(state["image_b64"]), ".jpg"
+        )
+
+    async with get_session() as session:
+        fila = await repo.guardar_examen(
+            session,
+            state["user_id"],
+            fecha_estudio=examen.fecha_estudio or ahora.date(),
+            tipo=examen.tipo,
+            archivo_path=archivo_path,
+            valores=valores,
+        )
+        examen_id = fila.id
+
+    fuera = sum(1 for v in valores if v["fuera_de_rango"])
+    return {
+        "extraccion": examen,
+        "examen_id": examen_id,
+        "respuesta": (
+            f"📄 Guardé tu estudio ({examen.tipo}) con {len(valores)} valores; "
+            f"{fuera} figuran fuera del rango de referencia del propio estudio. "
+            "Recordá que la interpretación real es de tu médico."
+        ),
     }
 
 
