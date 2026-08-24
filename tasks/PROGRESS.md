@@ -11,3 +11,4 @@
 | 1 | 1.3 | done | step 1.3: exámenes y conversación | 2026-08-24 |
 | 1 | 1.4 | done | step 1.4: repository escritura + tests | 2026-08-24 |
 | 1 | 1.5 | done | step 1.5: repository consulta + tests | 2026-08-24 |
+| 2 | 2.1 | done | step 2.1: cliente llm + transcripción | 2026-08-24 |
