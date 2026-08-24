@@ -16,6 +16,7 @@ from app.db.models import (
     MetricasDia,
     Perfil,
     Peso,
+    RegistroPendiente,
     User,
 )
 
@@ -190,6 +191,34 @@ async def guardar_examen(
         session.add(ExamenValor(examen_id=examen.id, **v))
     await session.flush()
     return examen
+
+
+async def guardar_pendiente(
+    session: AsyncSession,
+    user_id: int,
+    *,
+    tipo: str,
+    payload: dict,
+    campo: str,
+    pregunta: str,
+) -> None:
+    """Un pendiente por usuario: el nuevo pisa al anterior."""
+    stmt = insert(RegistroPendiente).values(
+        user_id=user_id, tipo=tipo, payload=payload, campo=campo, pregunta=pregunta
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[RegistroPendiente.user_id],
+        set_={"tipo": tipo, "payload": payload, "campo": campo, "pregunta": pregunta},
+    )
+    await session.execute(stmt)
+
+
+async def obtener_pendiente(session: AsyncSession, user_id: int) -> RegistroPendiente | None:
+    return await session.get(RegistroPendiente, user_id)
+
+
+async def borrar_pendiente(session: AsyncSession, user_id: int) -> None:
+    await session.execute(delete(RegistroPendiente).where(RegistroPendiente.user_id == user_id))
 
 
 async def guardar_mensaje_conversacion(

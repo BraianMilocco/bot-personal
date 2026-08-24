@@ -2,6 +2,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -125,6 +126,19 @@ class MetricasDia(Base):
     fecha: Mapped[date] = mapped_column(Date)
     pasos_total: Mapped[int | None] = mapped_column(nullable=True)
     fuente: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RegistroPendiente(Base):
+    """Registro a medio guardar esperando UNA aclaración del usuario (uno por user)."""
+
+    __tablename__ = "registros_pendientes"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    tipo: Mapped[str] = mapped_column(String)  # 'comida' | 'actividad' | ...
+    payload: Mapped[dict] = mapped_column(JSON)
+    campo: Mapped[str] = mapped_column(String)
+    pregunta: Mapped[str] = mapped_column(Text)
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Examen(Base):
