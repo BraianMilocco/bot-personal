@@ -60,6 +60,8 @@ def _despues_de_clasificar(state: AgentState) -> str:
         return "fin"
     if state.get("intent") == "consultar":
         return "consultar"
+    if state.get("intent") == "sugerir":
+        return "sugerir"
     return "extraer"
 
 
@@ -86,6 +88,7 @@ def build_graph():
     g.add_node("examen", nodes.examen_extraer)
     g.add_node("clasificar", nodes.clasificar)
     g.add_node("consultar", nodes.consultar)
+    g.add_node("sugerir", nodes.sugerir)
     g.add_node("extraer", nodes.extraer)
     g.add_node("aclarar", nodes.aclarar)
     g.add_node("completar", nodes.completar)
@@ -124,9 +127,10 @@ def build_graph():
     g.add_conditional_edges(
         "clasificar",
         _despues_de_clasificar,
-        {"extraer": "extraer", "consultar": "consultar", "fin": END},
+        {"extraer": "extraer", "consultar": "consultar", "sugerir": "sugerir", "fin": END},
     )
     g.add_edge("consultar", END)
+    g.add_edge("sugerir", END)
     g.add_conditional_edges(
         "extraer",
         _despues_de_extraer,

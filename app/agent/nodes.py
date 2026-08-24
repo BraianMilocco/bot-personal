@@ -465,6 +465,33 @@ async def consultar(state):
 
 
 @_con_manejo
+async def sugerir(state):
+    """Sugerencias con análisis cruzado sobre el bloque de contexto del usuario."""
+    ahora = ahora_usuario(state)
+    user_id = state["user_id"]
+    async with get_session() as session:
+        contexto = await bloque_contexto(session, user_id, ahora.date())
+    r = await llm.conversar(
+        [
+            {
+                "role": "system",
+                "content": prompts.system_sugerir(ahora, state.get("nombre", ""), contexto),
+            },
+            {"role": "user", "content": state["input_text"]},
+        ]
+    )
+    respuesta = r.choices[0].message.content
+    async with get_session() as session:
+        await repo.guardar_mensaje_conversacion(
+            session, user_id, rol="user", contenido=state["input_text"]
+        )
+        await repo.guardar_mensaje_conversacion(
+            session, user_id, rol="assistant", contenido=respuesta
+        )
+    return {"respuesta": respuesta}
+
+
+@_con_manejo
 async def guardar(state):
     ahora = ahora_usuario(state)
     extraccion = state["extraccion"]

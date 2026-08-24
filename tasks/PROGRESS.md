@@ -27,3 +27,4 @@
 | 6 | 6.1 | done | step 6.1: ingesta de estudios | 2026-08-24 |
 | 6 | 6.2 | done | step 6.2: extracción y comparación | 2026-08-24 |
 | 6 | 6.3 | done | step 6.3: resumen de exámenes | 2026-08-24 |
+| 7 | 7.1 | done | step 7.1: sugerencias cruzadas | 2026-08-24 |
