@@ -148,6 +148,28 @@ async def ultimo_examen(
     return await session.scalar(stmt.order_by(Examen.fecha_estudio.desc(), Examen.id.desc()))
 
 
+async def listar_examenes(session: AsyncSession, user_id: int) -> list[Examen]:
+    """Todos los exámenes del usuario, el más reciente primero."""
+    return list(
+        await session.scalars(
+            select(Examen)
+            .where(Examen.user_id == user_id)
+            .order_by(Examen.fecha_estudio.desc(), Examen.id.desc())
+        )
+    )
+
+
+async def examen_anterior(
+    session: AsyncSession, user_id: int, tipo: str, excluir_id: int
+) -> Examen | None:
+    """El estudio anterior del mismo tipo (excluyendo el recién guardado)."""
+    return await session.scalar(
+        select(Examen)
+        .where(Examen.user_id == user_id, Examen.tipo == tipo, Examen.id != excluir_id)
+        .order_by(Examen.fecha_estudio.desc(), Examen.id.desc())
+    )
+
+
 async def valores_examen(session: AsyncSession, examen_id: int) -> list[ExamenValor]:
     return list(
         await session.scalars(

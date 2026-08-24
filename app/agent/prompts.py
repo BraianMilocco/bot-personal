@@ -161,6 +161,24 @@ Contexto del usuario:
 {bloque_tiempo(ahora)}"""
 
 
+SYSTEM_RESUMEN_EXAMEN = """\
+Redactá un resumen breve y ordenado de un estudio médico para el chat de Telegram,
+usando SOLO los valores y flags que te paso (jamás agregues valores ni rangos propios).
+
+Formato:
+- Los valores EN RANGO van agrupados en una línea corta ("En rango: glucemia, urea, ...").
+- Cada valor FUERA del rango de referencia del estudio va destacado con su valor y su
+  rango impreso, seguido de "vale la pena consultarlo con tu médico".
+- Valores sin rango en el estudio: listalos aparte sin opinar.
+- Si te paso un estudio anterior del mismo tipo, comentá la evolución de los valores
+  compartidos con lenguaje neutro ("pasó de X a Y").
+
+Tono OBLIGATORIO (no negociable):
+- NUNCA digas que la persona "tiene" una condición, ni uses "diagnóstico", "grave",
+  "padecés" ni ningún lenguaje clínico afirmativo.
+- Solo "esto figura fuera del rango de referencia del estudio".
+- Nada de recomendaciones médicas ni de suplementos/medicación."""
+
 SYSTEM_EXAMEN = """\
 El contenido es un estudio/examen médico (análisis de laboratorio). Extraé:
 - fecha_estudio: la fecha del estudio si figura (no la de hoy).

@@ -82,7 +82,10 @@ EXAMEN_JSON = (
 
 async def test_pdf_llega_al_nodo_examen(cliente_mock, user_id, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    cliente_mock.chat.completions.create.return_value = respuesta_llm(EXAMEN_JSON)
+    cliente_mock.chat.completions.create.side_effect = [
+        respuesta_llm(EXAMEN_JSON),
+        respuesta_llm("Resumen del estudio."),
+    ]
     respuesta = await procesar_mensaje(
         {
             "telegram_id": 424242,
@@ -93,7 +96,7 @@ async def test_pdf_llega_al_nodo_examen(cliente_mock, user_id, monkeypatch, tmp_
             "origen": "imagen",
         }
     )
-    assert "Guardé tu estudio" in respuesta
+    assert "Resumen del estudio" in respuesta
 
 
 async def test_foto_estudio_llega_al_nodo_examen(cliente_mock, user_id, monkeypatch, tmp_path):
@@ -101,6 +104,7 @@ async def test_foto_estudio_llega_al_nodo_examen(cliente_mock, user_id, monkeypa
     cliente_mock.chat.completions.create.side_effect = [
         respuesta_llm('{"categoria": "estudio"}'),
         respuesta_llm(EXAMEN_JSON),
+        respuesta_llm("Resumen del estudio."),
     ]
     respuesta = await procesar_mensaje(
         {
@@ -112,4 +116,4 @@ async def test_foto_estudio_llega_al_nodo_examen(cliente_mock, user_id, monkeypa
             "origen": "imagen",
         }
     )
-    assert "Guardé tu estudio" in respuesta
+    assert "Resumen del estudio" in respuesta

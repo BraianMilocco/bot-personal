@@ -15,7 +15,7 @@ from app.archivos import guardar_archivo_examen
 from app.config import settings
 from app.db import consultas
 from app.db import repository as repo
-from app.db.models import Perfil
+from app.db.models import Examen, Perfil
 from app.db.session import get_session
 from app.schemas import (
     ActividadExtraida,
@@ -231,27 +231,81 @@ async def examen_extraer(state):
             state["user_id"], base64.b64decode(state["image_b64"]), ".jpg"
         )
 
+    fecha_estudio = examen.fecha_estudio or ahora.date()
     async with get_session() as session:
         fila = await repo.guardar_examen(
             session,
             state["user_id"],
-            fecha_estudio=examen.fecha_estudio or ahora.date(),
+            fecha_estudio=fecha_estudio,
             tipo=examen.tipo,
             archivo_path=archivo_path,
             valores=valores,
         )
         examen_id = fila.id
+        anterior = await consultas.examen_anterior(
+            session, state["user_id"], examen.tipo, examen_id
+        )
+        valores_anteriores = (
+            [
+                {"nombre": v.nombre, "valor": v.valor, "fuera_de_rango": v.fuera_de_rango}
+                for v in await consultas.valores_examen(session, anterior.id)
+            ]
+            if anterior
+            else None
+        )
 
-    fuera = sum(1 for v in valores if v["fuera_de_rango"])
-    return {
-        "extraccion": examen,
-        "examen_id": examen_id,
-        "respuesta": (
-            f"📄 Guardé tu estudio ({examen.tipo}) con {len(valores)} valores; "
-            f"{fuera} figuran fuera del rango de referencia del propio estudio. "
-            "Recordá que la interpretación real es de tu médico."
-        ),
+    resumen = await redactar_resumen_examen(examen.tipo, fecha_estudio, valores, valores_anteriores)
+
+    async with get_session() as session:
+        fila_examen = await session.get(Examen, examen_id)
+        fila_examen.resumen = resumen
+
+    return {"extraccion": examen, "examen_id": examen_id, "respuesta": resumen}
+
+
+FRASES_PROHIBIDAS = ("tenés", "tenes", "es grave", "diagnóstico", "diagnostico", "padecés")
+CIERRE_EXAMEN = "⚠️ Recordá: la interpretación real de un estudio siempre es de tu médico."
+
+
+def resumen_deterministico(tipo: str, fecha, valores: list[dict]) -> str:
+    """Fallback sin LLM: agrupa en rango / fuera de rango / sin rango."""
+    en_rango = [v["nombre"] for v in valores if v["fuera_de_rango"] is False]
+    fuera = [v for v in valores if v["fuera_de_rango"]]
+    sin_rango = [v["nombre"] for v in valores if v["fuera_de_rango"] is None]
+    lineas = [f"📄 Estudio de {tipo} del {fecha.strftime('%d/%m/%Y')}:"]
+    if en_rango:
+        lineas.append(f"En rango: {', '.join(en_rango)}.")
+    for v in fuera:
+        rango = f"{v['ref_min'] or ''}-{v['ref_max'] or ''}".strip("-")
+        lineas.append(
+            f"• {v['nombre']}: {v['valor']} {v['unidad'] or ''} figura fuera del rango de "
+            f"referencia del estudio ({rango}) — vale la pena consultarlo con tu médico."
+        )
+    if sin_rango:
+        lineas.append(f"Sin rango de referencia en el estudio: {', '.join(sin_rango)}.")
+    return "\n".join(lineas)
+
+
+async def redactar_resumen_examen(
+    tipo: str, fecha, valores: list[dict], valores_anteriores: list[dict] | None
+) -> str:
+    datos = {
+        "tipo": tipo,
+        "fecha_estudio": fecha.isoformat(),
+        "valores": valores,
+        "estudio_anterior": valores_anteriores,
     }
+    r = await llm.conversar(
+        [
+            {"role": "system", "content": prompts.SYSTEM_RESUMEN_EXAMEN},
+            {"role": "user", "content": json.dumps(datos, ensure_ascii=False, default=str)},
+        ]
+    )
+    resumen = (r.choices[0].message.content or "").strip()
+    if not resumen or any(f in resumen.lower() for f in FRASES_PROHIBIDAS):
+        logger.warning("resumen de examen con lenguaje prohibido o vacío: uso fallback")
+        resumen = resumen_deterministico(tipo, fecha, valores)
+    return f"{resumen}\n\n{CIERRE_EXAMEN}"
 
 
 @_con_manejo

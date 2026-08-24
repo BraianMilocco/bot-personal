@@ -211,6 +211,51 @@ async def cmd_perfil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     _log_mensaje(update, "comando", inicio)
 
 
+async def cmd_examenes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "comando")
+    if usuario is None:
+        return
+    async with get_session() as session:
+        examenes = await consultas.listar_examenes(session, usuario["user_id"])
+    if not examenes:
+        await update.message.reply_text("No tenés exámenes cargados. Mandame un PDF o una foto.")
+        return
+    lineas = ["📄 Tus exámenes (el 1 es el más reciente):"]
+    lineas.extend(
+        f"{i}. {e.tipo} — {e.fecha_estudio.strftime('%d/%m/%Y')}"
+        for i, e in enumerate(examenes, start=1)
+    )
+    lineas.append("Ver uno: /examen N")
+    await update.message.reply_text("\n".join(lineas))
+    _log_mensaje(update, "comando", inicio)
+
+
+async def cmd_examen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inicio = time.monotonic()
+    usuario = await _autorizar(update, "comando")
+    if usuario is None:
+        return
+    args = getattr(context, "args", None) or []
+    n = int(args[0]) if args and args[0].isdigit() else 1
+    async with get_session() as session:
+        examenes = await consultas.listar_examenes(session, usuario["user_id"])
+        if not examenes or n < 1 or n > len(examenes):
+            await update.message.reply_text("No encuentro ese examen. Probá /examenes.")
+            return
+        examen = examenes[n - 1]
+        valores = await consultas.valores_examen(session, examen.id)
+    lineas = [examen.resumen or f"📄 Estudio de {examen.tipo} sin resumen."]
+    if valores:
+        lineas.append("\nValores:")
+        for v in valores:
+            marca = " ⚠️" if v.fuera_de_rango else ""
+            rango = f" (ref {v.ref_min or ''}-{v.ref_max or ''})" if v.ref_min or v.ref_max else ""
+            lineas.append(f"• {v.nombre}: {v.valor} {v.unidad or ''}{rango}{marca}")
+    await update.message.reply_text("\n".join(lineas))
+    _log_mensaje(update, "comando", inicio)
+
+
 async def _procesar_texto(update: Update, usuario: dict, texto: str, origen: str) -> None:
     respuesta = await procesar_mensaje(
         {
@@ -347,6 +392,8 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("hoy", cmd_hoy))
     application.add_handler(CommandHandler("semana", cmd_semana))
     application.add_handler(CommandHandler("perfil", cmd_perfil))
+    application.add_handler(CommandHandler("examenes", cmd_examenes))
+    application.add_handler(CommandHandler("examen", cmd_examen))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, mensaje_texto))
     application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, mensaje_audio))
     application.add_handler(MessageHandler(filters.PHOTO, mensaje_foto))

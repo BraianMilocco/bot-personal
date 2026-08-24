@@ -39,14 +39,17 @@ def test_marcar_fuera_de_rango():
 
 async def test_examen_persistido_end_to_end(cliente_mock, user_id, session, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    cliente_mock.chat.completions.create.return_value = respuesta_llm(
-        '{"fecha_estudio": "2026-08-01", "tipo": "sangre", "valores": ['
-        '{"nombre": "Glucemia", "valor": "95", "unidad": "mg/dl",'
-        ' "ref_min": "70", "ref_max": "110"},'
-        '{"nombre": "HDL", "valor": "38", "unidad": "mg/dl", "ref_min": "40"},'
-        '{"nombre": "Serologia", "valor": "negativo"}'
-        "]}"
-    )
+    cliente_mock.chat.completions.create.side_effect = [
+        respuesta_llm(
+            '{"fecha_estudio": "2026-08-01", "tipo": "sangre", "valores": ['
+            '{"nombre": "Glucemia", "valor": "95", "unidad": "mg/dl",'
+            ' "ref_min": "70", "ref_max": "110"},'
+            '{"nombre": "HDL", "valor": "38", "unidad": "mg/dl", "ref_min": "40"},'
+            '{"nombre": "Serologia", "valor": "negativo"}'
+            "]}"
+        ),
+        respuesta_llm("Resumen: hdl figura fuera del rango del estudio."),
+    ]
     respuesta = await procesar_mensaje(
         {
             "telegram_id": 424242,
@@ -58,9 +61,8 @@ async def test_examen_persistido_end_to_end(cliente_mock, user_id, session, monk
             "origen": "imagen",
         }
     )
-    assert "3 valores" in respuesta
-    assert "1 figuran fuera del rango" in respuesta
-    assert "médico" in respuesta
+    assert "hdl figura fuera del rango" in respuesta
+    assert "médico" in respuesta  # cierre agregado en código
 
     examen = await session.scalar(select(Examen).where(Examen.user_id == user_id))
     assert examen.tipo == "sangre"
